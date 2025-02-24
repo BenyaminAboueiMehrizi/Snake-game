@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>بازی مار</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background: linear-gradient(135deg, #1e3c72, #2a5298);
+        color: #fff;
+        font-family: "Arial", sans-serif;
+      }
+      .game-container {
+        display: grid;
+        grid-template-columns: repeat(20, 20px);
+        grid-template-rows: repeat(20, 20px);
+        gap: 2px;
+        background-color: #333;
+        padding: 10px;
+        border: 4px solid #fff;
+        border-radius: 10px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      }
+      .cell {
+        width: 20px;
+        height: 20px;
+        background-color: #444;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+      }
+      .snake {
+        background: linear-gradient(145deg, #76c893, #34a853);
+        border-radius: 50%;
+        box-shadow: 0 0 5px rgba(0, 255, 0, 0.7);
+      }
+      .food {
+        background: radial-gradient(circle, #ff5252, #ff1744);
+        border-radius: 50%;
+        box-shadow: 0 0 8px rgba(255, 0, 0, 0.7);
+      }
+      .obstacle {
+        background: #ff9800;
+        border-radius: 4px;
+        box-shadow: 0 0 5px rgba(255, 152, 0, 0.7);
+      }
+      .overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.5rem;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.8);
+        color: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        display: none;
+      }
+      .overlay p {
+        margin: 10px 0;
+      }
+      .reset-button {
+        background: #ff5252;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 1rem;
+        border-radius: 5px;
+        cursor: pointer;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        transition: background 0.3s, transform 0.2s;
+      }
+      .reset-button:hover {
+        background: #ff1744;
+        transform: scale(1.05);
+      }
+      .mode-buttons {
+        margin-bottom: 20px;
+      }
+      .mode-buttons button {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 1rem;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 5px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        transition: background 0.3s, transform 0.2s;
+      }
+      .mode-buttons button:hover {
+        background: #45a049;
+        transform: scale(1.05);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>بازی مار</h1>
+    <div class="mode-buttons">
+      <button onclick="changeMode('easy')">حالت آسان</button>
+      <button onclick="changeMode('hard')">حالت سخت</button>
+    </div>
+    <div id="score">امتیاز: 0</div>
+    <div id="high-score">امتیاز بالا: 0</div>
+    <div class="game-container" id="game-container"></div>
+    <div class="overlay" id="overlay">
+      <p>بازی تمام شد!</p>
+      <p>
+        برای شروع دوباره یکی از کلیدهای جهت‌دار را فشار دهید یا روی دکمه زیر
+        کلیک کنید:
+      </p>
+      <button class="reset-button" id="reset-button">شروع دوباره</button>
+    </div>
+    <audio id="eat-sound" src="eat-sound.mp3"></audio>
+    <audio id="game-over-sound" src="lose-sound.mp3"></audio>
+    <script>
+      const container = document.getElementById("game-container");
+      const overlay = document.getElementById("overlay");
+      const resetButton = document.getElementById("reset-button");
+      const gridSize = 20;
+      let snake,
+        food,
+        direction,
+        gameOver,
+        gameRunning,
+        score,
+        speed,
+        obstacles,
+        gameMode,
+        highScore,
+        gameInterval;
+
+      // مقداردهی اولیه بازی
+      function resetGame() {
+        snake = [{ x: 10, y: 10 }];
+        food = {
+          x: Math.floor(Math.random() * gridSize),
+          y: Math.floor(Math.random() * gridSize),
+        };
+        direction = { x: 0, y: 0 };
+        gameOver = false;
+        gameRunning = false;
+        score = 0;
+        speed = 200;
+        highScore = localStorage.getItem("highScore") || 0;
+
+        if (gameMode === "hard") {
+          obstacles = [
+            { x: 5, y: 5 },
+            { x: 15, y: 15 },
+            { x: 10, y: 10 },
+          ];
+        } else {
+          obstacles = [];
+        }
+
+        draw();
+        overlay.style.display = "none"; // مخفی کردن overlay در ابتدا
+        document.getElementById("score").textContent = `امتیاز: ${score}`;
+        document.getElementById(
+          "high-score"
+        ).textContent = `امتیاز بالا: ${highScore}`;
+      }
+
+      // ساخت شبکه
+      for (let i = 0; i < gridSize * gridSize; i++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        container.appendChild(cell);
+      }
+
+      const cells = document.querySelectorAll(".cell");
+
+      // کشیدن مار، غذا و موانع
+      function draw() {
+        cells.forEach((cell) => (cell.className = "cell"));
+        const foodIndex = food.y * gridSize + food.x;
+        cells[foodIndex].classList.add("food");
+
+        obstacles.forEach((obstacle) => {
+          const index = obstacle.y * gridSize + obstacle.x;
+          cells[index].classList.add("obstacle");
+        });
+
+        snake.forEach((segment) => {
+          const index = segment.y * gridSize + segment.x;
+          cells[index].classList.add("snake");
+        });
+      }
+
+      // حرکت مار
+      function moveSnake() {
+        const head = {
+          x: snake[0].x + direction.x,
+          y: snake[0].y + direction.y,
+        };
+
+        if (
+          head.x < 0 ||
+          head.x >= gridSize ||
+          head.y < 0 ||
+          head.y >= gridSize ||
+          snake.some(
+            (segment) => segment.x === head.x && segment.y === head.y
+          ) ||
+          obstacles.some(
+            (obstacle) => obstacle.x === head.x && obstacle.y === head.y
+          )
+        ) {
+          gameOver = true;
+          overlay.style.display = "block";
+          document.getElementById("game-over-sound").play();
+          updateHighScore();
+          return;
+        }
+
+        snake.unshift(head);
+
+        if (head.x === food.x && head.y === food.y) {
+          food = {
+            x: Math.floor(Math.random() * gridSize),
+            y: Math.floor(Math.random() * gridSize),
+          };
+          score += 10;
+          if (speed > 50) speed -= 5;
+          clearInterval(gameInterval);
+          gameInterval = setInterval(update, speed);
+          document.getElementById("eat-sound").play();
+        } else {
+          snake.pop();
+        }
+      }
+
+      // به‌روزرسانی بازی
+      function update() {
+        if (!gameOver && gameRunning) {
+          moveSnake();
+          draw();
+          document.getElementById("score").textContent = `امتیاز: ${score}`;
+        }
+      }
+
+      // تغییر جهت حرکت
+      function changeDirection(event) {
+        if (!gameRunning) {
+          gameRunning = true;
+          overlay.style.display = "none";
+        }
+
+        switch (event.key) {
+          case "ArrowUp":
+            if (direction.y === 0) direction = { x: 0, y: -1 };
+            break;
+          case "ArrowDown":
+            if (direction.y === 0) direction = { x: 0, y: 1 };
+            break;
+          case "ArrowLeft":
+            if (direction.x === 0) direction = { x: -1, y: 0 };
+            break;
+          case "ArrowRight":
+            if (direction.x === 0) direction = { x: 1, y: 0 };
+            break;
+        }
+
+        if (gameOver) {
+          resetGame();
+        }
+      }
+
+      // تغییر حالت بازی
+      function changeMode(mode) {
+        gameMode = mode;
+        resetGame();
+      }
+
+      // ذخیره امتیاز بالا
+      function updateHighScore() {
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem("highScore", highScore);
+        }
+        document.getElementById(
+          "high-score"
+        ).textContent = `امتیاز بالا: ${highScore}`;
+      }
+
+      document.addEventListener("keydown", changeDirection);
+      resetButton.addEventListener("click", resetGame);
+
+      // شروع اولیه
+      resetGame();
+      gameInterval = setInterval(update, speed);
+    </script>
+  </body>
+</html>
